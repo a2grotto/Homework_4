@@ -1,0 +1,152 @@
+---
+title: "Homework 4"
+author: "Adam Grottoli"
+date: "March 4, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/Adam/Documents/R/R practice/BioStats/Homework_4")
+```
+
+```{r}
+iceberg=read.csv('titanic.csv')
+```
+
+##Question 2
+Gender and age will have an effect on survival because women and children were given priority when the ship was being evacuated. Therefore females and younger individuals will have higher survival.
+Number of parents/children on board will have an effect on survival because people with children on board would have been more likely to get on a lifeboat with their children.
+
+Price of ticket and class will have an effect on survival because people in cabins closer to the upper deck will have had to travel less distance to reach a lifeboat and will have higher survival. People with more expensive tickets are likely located closer to the upper deck and will have higher survival. People in a higher class are likely located closer to the upper deck and will have higher survival.
+
+##Question 3
+```{r}
+library(vcd)
+mosaic(survived~Gender, data=iceberg)
+```
+Figure 1. A comparision of the proportion of males and females who survived. The area of each square is representative of the number of individuals in that class.
+
+```{r}
+mosaic(survived~pclass, data=iceberg)
+```
+Figure 2. A comparision of the proportion of people who survived in 1st vs. 2nd, vs 3rd class. The area of each square is representative of the number of individuals in that class.
+
+```{r}
+library(popbio)
+iceberg.nona<-na.omit(data.frame("age"=iceberg$age,"survive"=iceberg$survived, 'fare'=iceberg$fare, 'sibling'=iceberg$sibsp, 'family'=iceberg$parch))
+logi.hist.plot(iceberg.nona$age,iceberg.nona$survive,boxp=FALSE,type="hist",col="gray", xlabel="Age")
+```
+Figure 3. The observed number of individuals who survived and died compared to age. The frequency of people in a given age class who surived and died is on top and bottom, respectively. The observed probability of survival in terms of age is given by the red line.
+
+```{r}
+logi.hist.plot(iceberg.nona$fare,iceberg.nona$survive,boxp=FALSE,type="hist",col="gray", xlabel="Fare", int=10)
+```
+Figure 4. The observed number of individuals who survived and died compared to fare. The frequency of people in a fare class who surived and died is on top and bottom, respectively. The observed probability of survival in terms of fare is given by the red line.
+
+```{r}
+logi.hist.plot(iceberg.nona$family,iceberg.nona$survive,boxp=FALSE,type="hist",col="gray", xlabel="Number of Parents/Children")
+```
+Figure 5. The observed number of individuals who survived and died compared to the number of children/parents on board. The frequency of people in a given class who surived and died is on top and bottom, respectively. The observed probability of survival in terms of number of children/parents is given by the red line.
+
+##Question 4
+```{r}
+library(bestglm)
+survive.vars=data.frame("age"=iceberg$age, 'fare'=iceberg$fare, 'sex'=iceberg$Gender,'family'=iceberg$parch, 'class'=iceberg$pclass ,"survive"=iceberg$survived)
+survive.varsnona=na.omit(survive.vars) 
+bestglm(survive.varsnona,IC="AIC",family=binomial)
+```
+
+##Question 5
+```{r}
+best.model<-glm(survive~age+sex+class, data=survive.varsnona)
+summary.lm(best.model)
+```
+The best model produced automatically included sex, age, and class as predictors of surivial.
+
+##Question 6
+```{r}
+univariate.age=glm(survive~age, data=survive.varsnona, family=binomial(link="logit"))
+summary(univariate.age)
+univariate.sex=glm(survive~sex, data=survive.varsnona, family=binomial(link="logit"))
+summary(univariate.sex)
+univariate.class=glm(survive~class, data=survive.varsnona, family=binomial(link="logit"))
+summary(univariate.class)
+univariate.fare=glm(survive~fare, data=survive.varsnona, family=binomial(link="logit"))
+summary(univariate.fare)
+univariate.family=glm(survive~family, data=survive.varsnona, family=binomial(link="logit"))
+summary(univariate.family)
+```
+All of the variables have a p-value less than 0.25
+
+
+```{r}
+purpose.model<-glm(survive~age+sex+class+fare+family, data=survive.varsnona)
+summary.lm(purpose.model)
+```
+When the full model is run, fare and number of parents/children are not significant. When they are removed the purposeful selection model matches the automatic selection model. 
+
+
+```{r}
+library(lmtest)
+lrtest(best.model,purpose.model)
+```
+The log likelihood is maximized in model 1.
+
+##Question 8.
+```{r}
+library(effects)
+plot(allEffects(best.model))
+```
+Figure 6. The effect of each predictor variable (age, sex, and class) on the probability of survival.
+Each predictor variable had the expected effect on the response variable. Younger individuals were more likely to survive. Females were more liekly to surive than males. People in a higher class (e.g. 1st class) were more likely to survive than those in a lower class.
+
+##Question 9.
+```{r}
+library(car)
+residualPlots(best.model)
+```
+Figure 7. Residuals vs fitted values for each predictor variable and full model. There are no trends in the residuals and fitted values for any variables which require attention 
+
+
+
+```{r}
+outlierTest(best.model)
+```
+The Bonferroni p shows that there is not outliers.
+
+```{r, warning=FALSE}
+influenceIndexPlot(best.model, id.n=3)
+```
+Figure 8. Influence of points expressed through Cook's D, studentized residuals, Bonferroni p values, and hat values.
+Point 25 and 94 have a disproportionately high Cook's D, but they are not high enough to require attention.
+No points have a disproportionate influence in the other measures.
+
+```{r}
+influencePlot(best.model)
+```
+Point 25 and 94 have high hat-values and a relatively large Cook's D. These data points were reviewed but they were not determined to be irregular or incorrect.
+```{r}
+vif(best.model)
+```
+Non of the VIFs are greater than 4 and do not require attention.
+
+##Question 11
+```{r}
+library(caret)
+ctrl <- trainControl(method = "repeatedcv", number = 10, savePredictions = TRUE)
+survive.varsnona$survive=as.factor(survive.varsnona$survive)
+train(survive~age+sex+class,data=survive.varsnona, method="glm", family=binomial(link='logit'),
+                 trControl = ctrl, tuneLength = 5)
+```
+Our model did well and accurately predicted whether an individual lived or died 78.37% of the time.
+
+##Question 13
+```{r}
+predictions<-predict(best.model, newdata=survive.varsnona,type="response")
+confusionMatrix(data=as.factor(as.numeric(predictions>0.5)),reference=survive.varsnona$survive)
+```
+The confusion matrix was accurate 78.18% of the time.
+
+##Question 14
+There is a slight difference in predictive capability of the confusion matrix and k-fold method. The k-fold method may have been slightly higher because it removes data points when it makes the model and tests the model on those data points. The confusion matrix is using all the points to make the model. The differnce in the data sets being used to create the model is what causes the diffence in accuracy.
